@@ -196,3 +196,46 @@ Reweighting does not carry over to unseen pieces (+0.04 points on validation). L
 rules hurts, although pianists "pay" most on them. So the reward was kept unchanged and no agent was
 retrained on new weights (`--rule-w` is available in train.py for later work). Getting past ~68%
 needs new kinds of reward terms (phrase position, scale and arpeggio patterns), not new weights.
+
+## 7. Comparison with Iman & Ahn (2025)
+
+30 PIG test pieces. The paper's numbers are from their Table 5 (stored as `paper_2025` in
+`results/twohand_v2/main_v2.json`); ours are from `main_v2.json` and `finetune_test.json`. The paper
+trains one model per test piece (about 45 GPU-days). Ours is one policy for all unseen pieces, plus
+per-piece fine-tuning for the first two rows.
+
+| Method | Type | Mgen | Mhigh | Msoft | Mrec | d_rel ↓ |
+| --- | --- | --- | --- | --- | --- | --- |
+| *Paper:* Uniform replay | RL | 62% | 67% | 75% | 70% | 0.81 |
+| *Paper:* EER | RL | 61% | 66% | 75% | 69% | 0.81 |
+| *Paper:* PER | RL | 59% | 67% | 75% | 69% | 0.84 |
+| *Paper:* FHMM1 | HMM | 67% | 70% | 80% | 75% | 1.03 |
+| *Paper:* FHMM2 | HMM | 70% | 74% | 85% | 80% | 0.97 |
+| *Paper:* FHMM3 | HMM | 68% | 76% | 86% | 82% | 0.96 |
+| *Paper:* Human | – | 73% | 75% | 79% | 77% | 1.00 |
+| **Ours: v2 R3 + fine-tuning, best of 3** | RL | **63.9%** | 64.7% | 67.8% | 67.1% | 1.03 |
+| Ours: v2 R3 + fine-tuning (mean of 3 seeds) | RL | 63.1% | 63.8% | 66.9% | 66.3% | 1.04 |
+| Ours: v2 R2 | RL | 62.2% | 62.8% | 65.9% | 65.1% | 1.17 |
+| Ours: v2 R3 | RL | 61.7% | 62.5% | 65.4% | 64.7% | 1.17 |
+| Ours: v2 A2 | RL | 61.0% | 61.8% | 64.8% | 64.1% | 1.19 |
+| Ours: v2 R1 | RL | 59.6% | 60.3% | 63.0% | 62.4% | 1.18 |
+| Ours: v2 2c (also picks hands) | RL | 57.7% | 58.4% | 61.1% | 60.5% | 1.22 |
+| Ours: original A2 | RL | 58.4% | 59.0% | 62.1% | 61.3% | 1.34 |
+| Ours: original R3 / R1 | RL | 50.1% / 49.1% | 50.7% / 49.7% | 53.2% / 52.2% | 52.1% / 51.1% | 1.81 / 1.75 |
+| *S1 (copies pianists)* | supervised | 61.8% | 62.4% | 65.5% | 64.8% | 1.19 |
+| *S2 (HMM)* | HMM | 60.9% | 61.9% | 64.8% | 64.1% | 1.20 |
+| *Greedy* | rule | 57.3% | 58.1% | 60.9% | 60.4% | 1.20 |
+| *M0 (reward optimum)* | search | 68.1% | 68.8% | 72.1% | 71.4% | 0.87 |
+| *Pianists vs each other* | – | 75.3% | – | – | – | 1.00 |
+
+- **Mgen:** our best agent (63.9%) beats all three of the paper's RL agents (59–62%), on unseen
+  pieces with one policy. Their HMM models (67–70%) remain higher.
+- **d_rel:** the paper's RL is better (0.81–0.84 against 1.03). Even our reward's exact optimum only
+  gets 0.87 under `balliauw15`. Training on `balliauw15` did not help (section 5).
+- **Mhigh, Msoft and Mrec** are probably not computed identically. They are 4–23 points above Mgen
+  in the paper but only 1–4 points above it here, so compare on Mgen.
+- **d_rel aggregation:** ours is pooled over pieces (piece mean: 1.14 for the best agent); the
+  paper's aggregation is not certain.
+- **Absolute difficulty** values are on different scales and are left out.
+- **Web app budget:** the 63.9% uses 100 fine-tuning episodes. The web app now uses at least 25,
+  which matched 100 on validation (65.6% vs 65.1%, `results/twohand_v2/episodes_val.json`).

@@ -33,10 +33,22 @@ itself, by RL with the rule reward only. To get the instant, unrefined fingering
 under the upload area, add `?refine=0` to the request, or start the server with `--no-refine`.
 That means 100 episodes from each of the three v2 R3 seeds, keeping the fingering with the lowest
 cost (`experiments/finetune_best.py`). No pianist fingerings are used. On the PIG test pieces this
-raises Mgen from 61.7% to 63.9%. The three seeds run in parallel, on the GPU when there is one. A
-short tune takes about 15 s. A long piece is capped at about 90 s (`REFINE_SECONDS` in
-`agent_runner.py`): no new episode starts after that, and the best fingering so far is kept. The
-Fantaisie-Impromptu, for example, gets 45 of the 100 episodes. Refine applies to mode `given` only.
+raises Mgen from 61.7% to 63.9%. The three seeds run in parallel, on the GPU when there is one.
+
+The budget is set in `agent_runner.py`. Every piece gets at least 25 episodes: on the validation
+pieces, 25 episodes match pianists as well as 100 (Mgen 65.6% vs 65.1%). A piece keeps practising
+up to 100 episodes while the upload is under 30 s, and nothing goes past 90 s. Measured times
+(plugged in, GPU):
+
+| Piece | Notes | Time | Episodes |
+| --- | --- | --- | --- |
+| Ode to Joy | 78 | 14 s | 100 |
+| Chopin, Waltz Op. 64 No. 1 | 393 | 32 s | 30 |
+| Bach, Invention No. 1 | 469 | 34 s | 25 |
+| Chopin, Fantaisie-Impromptu | 555 | 31 s | 28 |
+| Chopin, Étude Op. 10 No. 12 | 2082 | 73 s | 25 |
+
+Refine applies to mode `given` only.
 
 `--ckpt runs/v2_2c_s0/best.pt` switches to mode 2c, where the agent also chooses the hand for single
 notes; a small **L** or **R** next to a finger number then marks a note moved to the other hand.

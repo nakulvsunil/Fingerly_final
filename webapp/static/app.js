@@ -65,7 +65,7 @@ async function request(promise) {
   el.loading.hidden = false;
   const lt = $("loadingText");
   if (lt) lt.textContent = refineQuery() ? "The robot pianist is working out the fingers…"
-                                         : "The robot pianist is practising this piece… (this can take a minute or two)";
+                                         : "The robot pianist is practising this piece… (up to about 1½ minutes)";
   try {
     const res = await promise;
     const body = await res.json();

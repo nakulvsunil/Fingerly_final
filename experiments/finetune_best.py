@@ -21,7 +21,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 
-def finetune_best(ckpt, pool, episodes, lr, eps, seed, device, batch=256, train_every=4, buffer=50_000):
+def finetune_best(ckpt, pool, episodes, lr, eps, seed, device, batch=256, train_every=4, buffer=50_000,
+                  deadline=None):
+    """deadline: time.time() value after which no new episode starts (None = run all episodes)."""
     from fingerly.dqn import Agent, NStep, Replay, set_seeds
     from fingerly.metrics import rollout
     from fingerly.twohand.env import Episode
@@ -41,6 +43,8 @@ def finetune_best(ckpt, pool, episodes, lr, eps, seed, device, batch=256, train_
     best_cost, best = greedy_eps()
     curve, best_ep, acc = [best_cost], 0, 0.0
     for k in range(1, episodes + 1):
+        if deadline is not None and time.time() >= deadline:
+            break
         for info in pool.infos:
             ep = Episode(pool.cfg, pool.model)
             o, m = ep.reset(info)

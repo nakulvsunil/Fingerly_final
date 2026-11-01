@@ -160,6 +160,8 @@ def twohand_parser() -> argparse.ArgumentParser:
     e.add_argument("--w-cross", type=float, default=1.0)
     e.add_argument("--no-mask", action="store_true")
     e.add_argument("--span-scale", type=float, default=1.0)
+    e.add_argument("--rule-w", type=float, nargs="+", default=None,
+                   help="per-rule reward weights, one per rule of --cost (default: all 1)")
     s = ap.add_argument_group("state")
     s.add_argument("--lookahead", type=int, default=4)
     s.add_argument("--no-hand-pos", action="store_true", help="drop thumb-position features (ablation)")

@@ -32,7 +32,7 @@ from .actions import N_SETS, SET_BITS, SETS_OF_SIZE, fingers_of
 from .costs import SHIFT_COST, SegmentTables, build_segment_tables
 from .features import key_of, iv, obs_dim, tclip
 from .prepare import Event, Segment
-from .rules import CostModel, HandEvent, crossing, make_model, thumb_position, time_leap
+from .rules import CostModel, HandEvent, crossing, make_model, thumb_position, time_leap, weighted
 
 MODES = ("lh", "given", "assign")
 HAND_IDX = {"L": 0, "R": 1}
@@ -58,6 +58,7 @@ class EnvConfig:
     occupied: bool = True  # mask fingers holding a key (False only for consistency checks)
     chord_tol: float = 0.03
     overlap_tol: float = 0.05
+    rule_w: Tuple[float, ...] = ()  # per-rule reward weights (empty = all 1); reported difficulty is unweighted
 
     @property
     def n_actions(self) -> int:
@@ -77,7 +78,13 @@ def env_config(args, v_max: float) -> EnvConfig:
     return EnvConfig(mode=args.mode, cost=args.cost, chord_horizontal=args.chord_horizontal,
                      span_scale=args.span_scale, v_max=v_max, w_time=args.w_time, w_cross=args.w_cross,
                      cross=args.cross, lam=args.lam, lookahead=args.lookahead, hand_pos=not args.no_hand_pos,
-                     use_mask=not args.no_mask, chord_tol=args.chord_tol, overlap_tol=args.overlap_tol)
+                     use_mask=not args.no_mask, chord_tol=args.chord_tol, overlap_tol=args.overlap_tol,
+                     rule_w=tuple(getattr(args, "rule_w", None) or ()))
+
+
+def reward_model(cfg: EnvConfig) -> CostModel:
+    """The cost model behind the reward: cfg.cost with cfg.rule_w applied (unweighted when empty)."""
+    return weighted(make_model(cfg.cost, cfg.chord_horizontal, cfg.span_scale), cfg.rule_w)
 
 
 # --------------------------------------------------------------------------------------
@@ -175,7 +182,7 @@ class StepRecord:
 class Episode:
     def __init__(self, cfg: EnvConfig, model: Optional[CostModel] = None):
         self.cfg = cfg
-        self.model = model or make_model(cfg.cost, cfg.chord_horizontal, cfg.span_scale)
+        self.model = model or reward_model(cfg)
         self.n_actions = cfg.n_actions
         self.info: Optional[SegInfo] = None
         self._rule_cache: Dict[tuple, Tuple[float, float]] = {}
@@ -480,6 +487,8 @@ def _tables_key(segments: Sequence[Segment], cfg: EnvConfig) -> str:
     """Content hash of everything the cost tables depend on."""
     sig = (cfg.mode, cfg.cost, cfg.chord_horizontal, cfg.span_scale, round(cfg.v_max, 6), cfg.w_time,
            [(s.piece, s.index, tuple((e.hand, e.onset, e.pitches) for e in s.events)) for s in segments])
+    if cfg.rule_w:  # appended only when set, so unweighted runs keep their cache files
+        sig = sig + (tuple(float(w) for w in cfg.rule_w),)
     return hashlib.sha1(pickle.dumps(sig)).hexdigest()[:20]
 
 
@@ -490,7 +499,7 @@ class SegmentPool:
     def __init__(self, segments: Sequence[Segment], cfg: EnvConfig, bonus: bool, model: Optional[CostModel] = None,
                  cache: bool = True):
         self.cfg = cfg
-        self.model = model or make_model(cfg.cost, cfg.chord_horizontal, cfg.span_scale)
+        self.model = model or reward_model(cfg)
         tables = None
         path = None
         if cache and cfg.mode != "assign" and segments:

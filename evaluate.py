@@ -234,6 +234,8 @@ def _m0(pool, beam, reference, tag):
     sig = dict(mode=cfg.mode, cost=cfg.cost, chord_horizontal=cfg.chord_horizontal, span_scale=cfg.span_scale,
                v_max=round(cfg.v_max, 6), w_time=cfg.w_time, w_cross=cfg.w_cross, cross=cfg.cross,
                cross_margin=cfg.cross_margin, tag=tag)
+    if cfg.rule_w:  # weighted reward: the unweighted --reference files do not apply
+        sig["rule_w"] = [float(w) for w in cfg.rule_w]
     key = json.dumps(sig, sort_keys=True)
     if key in _M0:
         return _M0[key]
@@ -245,6 +247,7 @@ def _m0(pool, beam, reference, tag):
         ref = json.loads(Path(r_path).read_text())
         rc = ref.get("config", {})
         same = all(rc.get(k) == sig[k] for k in ("mode", "cost", "chord_horizontal", "span_scale", "w_time", "cross"))
+        same = same and rc.get("rule_w", []) == sig.get("rule_w", [])
         same = same and abs(rc.get("v_max", 0) - cfg.v_max) < 1e-6 and (cfg.mode != "assign" or rc.get("w_cross") == cfg.w_cross)
         if same and ref.get("config", {}).get("split", tag.split("|")[0]) == tag.split("|")[0]:
             m = {(r["piece"], r["index"]): r["cost"] for r in ref["segments"] if (r["piece"], r["index"]) in keys}

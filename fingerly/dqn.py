@@ -729,7 +729,7 @@ class Trainer:
         self.step, self.episodes, self.best, self.best_step = st["step"], st["episodes"], st["best"], st["best_step"]
         self.history, self.elite, self.elite_fixed = st["history"], st["elite"], set(st["elite_fixed"])
         self.rng.bit_generator.state = st["rng"]
-        torch.set_rng_state(st["torch_rng"])
+        torch.set_rng_state(st["torch_rng"].cpu())  # map_location moved it to the training device
         random.setstate(st["py_rng"])
         np.random.set_state(st["np_rng"])
         b = self.out / "buffer.npz"

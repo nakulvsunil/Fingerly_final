@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Piano Finger Buddy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo" aria-hidden="true">🎹</span>
+    <div>
+      <h1>Piano Finger Buddy</h1>
+      <p class="tag">Upload your music and watch which finger plays every note!</p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- 1. Upload -->
+  <section id="upload" class="card upload">
+    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a music file to upload">
+      <div class="drop-icon" aria-hidden="true">🎼</div>
+      <p class="drop-big">Drop your sheet music here</p>
+      <p class="drop-small">or</p>
+      <label class="btn btn-primary">
+        Choose a file
+        <input id="file" type="file" accept=".musicxml,.xml,.mxl,.mid,.midi,.txt" hidden>
+      </label>
+      <p class="formats">MusicXML (.musicxml, .xml, .mxl) · MIDI (.mid) · PIG (.txt)</p>
+    </div>
+    <label class="chip refine"><input id="refine" type="checkbox" checked> ✨ Refine: the robot practises this piece first
+      (better fingers; untick for an instant answer)</label>
+    <div class="side">
+      <h2>No music file? Try one!</h2>
+      <div id="examples" class="examples"></div>
+      <details class="tip">
+        <summary>I only have a PDF or a photo of my music</summary>
+        <p>Open it in the free <b>MuseScore</b> app (File → Import PDF), or scan it with a sheet-music
+          scanning app, then save it as <b>MusicXML</b> and upload that file here.</p>
+      </details>
+    </div>
+  </section>
+
+  <div id="loading" class="card loading" hidden>
+    <div class="robot" aria-hidden="true">🤖</div>
+    <p id="loadingText">The robot pianist is working out the fingers…</p>
+  </div>
+  <div id="error" class="card error" role="alert" hidden></div>
+
+  <!-- 2. Player -->
+  <section id="player" hidden>
+    <div class="card song">
+      <div class="song-head">
+        <div>
+          <h2 id="title">Song</h2>
+          <p id="pageLabel" class="page-label">Bars 1–2</p>
+        </div>
+        <button id="newSong" class="btn btn-soft">🎵 New song</button>
+      </div>
+      <div id="warnings" class="warnings"></div>
+
+      <div class="score-wrap">
+        <button id="prevPage" class="page-btn" aria-label="Previous two bars">‹</button>
+        <div class="score-scroll">
+          <svg id="score" viewBox="0 0 1000 380" role="img" aria-label="Two bars of the score with finger numbers"></svg>
+        </div>
+        <button id="nextPage" class="page-btn" aria-label="Next two bars">›</button>
+      </div>
+      <div class="timeline">
+        <input id="seek" type="range" min="0" max="1" step="0.01" value="0" aria-label="Song position">
+        <div id="pageDots" class="page-dots"></div>
+      </div>
+    </div>
+
+    <div class="card controls">
+      <div class="transport">
+        <button id="stepBack" class="btn btn-round" aria-label="Previous note" title="Previous note (←)">⏮</button>
+        <button id="play" class="btn btn-play" aria-label="Play">▶</button>
+        <button id="stepFwd" class="btn btn-round" aria-label="Next note" title="Next note (→)">⏭</button>
+      </div>
+      <div class="speed">
+        <span aria-hidden="true">🐢</span>
+        <input id="speed" type="range" min="0.25" max="1.5" step="0.05" value="0.6" aria-label="Speed">
+        <span aria-hidden="true">🐇</span>
+        <output id="speedOut">60%</output>
+      </div>
+      <div class="toggles">
+        <label class="chip"><input id="loopPage" type="checkbox"> 🔁 Repeat these 2 bars</label>
+        <label class="chip"><input id="handR" type="checkbox" checked> Right hand</label>
+        <label class="chip"><input id="handL" type="checkbox" checked> Left hand</label>
+        <label class="chip"><input id="sound" type="checkbox" checked> 🔊 Sound</label>
+        <label class="chip"><input id="names" type="checkbox"> Note names</label>
+      </div>
+    </div>
+
+    <div class="card stage">
+      <div class="hands">
+        <figure class="hand-box">
+          <svg id="handLsvg" viewBox="0 0 200 210" aria-label="Left hand"></svg>
+          <figcaption>Left hand</figcaption>
+        </figure>
+        <div id="now" class="now" aria-live="polite">Press ▶ to start, or ⏭ to go one note at a time.</div>
+        <figure class="hand-box">
+          <svg id="handRsvg" viewBox="0 0 200 210" aria-label="Right hand"></svg>
+          <figcaption>Right hand</figcaption>
+        </figure>
+      </div>
+      <div class="piano-scroll">
+        <div id="piano" class="piano"></div>
+      </div>
+      <div id="legend" class="legend"></div>
+    </div>
+
+    <p id="modelInfo" class="model-info"></p>
+  </section>
+</main>
+
+<footer class="foot">
+  Fingers by the Fingerly reinforcement-learning agent: it learned by practising thousands of pieces
+  and getting points for comfortable, pianist-like fingerings.
+  <span class="keys">Keys: Space = play/pause · ← → = one note · PageUp/PageDown = 2 bars</span>
+</footer>
+<script src="/app.js"></script>
+</body>
+</html>

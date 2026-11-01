@@ -388,6 +388,21 @@ def merged_cost(model: CostModel, stream: Sequence[Tuple[str, Sequence[int], Seq
 MODELS = {"parncutt12": Parncutt12, "balliauw15": Balliauw15}
 
 
+def weighted(model: CostModel, w: Sequence[float]) -> CostModel:
+    """Scale the model's rule terms by w (one weight per rule) in place; empty w leaves it unchanged.
+    Only the terms change: feasibility (masks, chord reach) is the same as the unweighted model."""
+    if not w:
+        return model
+    w = np.asarray(w, float)
+    if w.shape != (model.n_rules,):
+        raise ValueError(f"{len(w)} rule weights for {model.n_rules} rules")
+    er, nt = model.event_rules, model.next_terms
+    model.event_rules = lambda ev2, ev1, ev0: er(ev2, ev1, ev0) * w
+    model.next_terms = lambda ev, nxt: nt(ev, nxt) * w
+    model.rule_w = tuple(w)
+    return model
+
+
 def make_model(name: str, chord_horizontal: str = "all", span_scale: float = 1.0, **kw) -> CostModel:
     return MODELS[name](chord_horizontal=chord_horizontal, span_scale=span_scale, **kw)
 

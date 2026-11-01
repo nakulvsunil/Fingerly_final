@@ -7,7 +7,7 @@ every note of a symbolic score, using deep reinforcement learning on the PIG dat
 | --- | --- | --- |
 | **A** | Reproduction of Iman & Ahn (2024): right hand, monophonic, DQN / DDQN / PG / A2C on four pieces | **Done** (results in §A.6) |
 | **B** | One hand at a time: a masked Double DQN on the whole of PIG, with a train/val/test split | Implemented |
-| **C** | **Current version: both hands, with chords and hand assignment, one shared RL policy, on a low compute budget**, compared against Iman & Ahn (2025) | Specified here, to be implemented |
+| **C** | **Current version: both hands, with chords and hand assignment, one shared RL policy, on a low compute budget**, compared against Iman & Ahn (2025) | **Done**: 63.9% Mgen on unseen test pieces (`experiments/RESULTS.md`) |
 
 ## Setup
 
@@ -23,6 +23,31 @@ agreement, so do not commit it. Unzip it, for example to `data/PianoFingeringDat
 
 No dataset yet? `python -m fingerly.fake_pig --out data/fake_pig` writes a fake dataset in PIG
 format so you can test the pipeline. The numbers it produces are meaningless.
+
+## Quick start for collaborators (branch `two-hand-finetuned`)
+
+The trained Part C agents are in the repository (`runs/v2_*/best.pt`, about 6 MB), so nothing has to
+be trained to use them. The rest of `runs/` stays ignored.
+
+```bash
+git clone -b two-hand-finetuned https://github.com/nakulvsunil/Fingerly.git && cd Fingerly
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements.txt                         # for a GPU, install torch from pytorch.org first
+python webapp/server.py --open                          # web app at http://127.0.0.1:8000
+```
+
+| What | Where |
+| --- | --- |
+| Web app: upload MusicXML, MIDI or PIG and see the agent's fingering on a piano | `webapp/README.md` |
+| Results and what was tried (v2 recipe, fine-tuning, comparison with the 2025 paper) | `experiments/RESULTS.md` |
+| Result tables (JSON and markdown) | `results/twohand_v2/` |
+| Included models: R1, R2, R3, A2 and 2c, seeds 0–2 | `runs/v2_<method>_s<seed>/best.pt` |
+| Retrain the v2 models (about 1–1.5 h on a laptop GPU) | `python experiments/run_v2.py --recipe "--gamma 0.5" --lam 4 --jobs 4` |
+| Fine-tune on the test pieces (the 63.9% result) | `python experiments/finetune_best.py --ckpt runs/v2_r3_s0/best.pt --split test --episodes 100 --out runs/v2_r4best_s0` (seeds 0–2) |
+| Tests | `pytest -q` (whole project) or `pytest -q webapp/test_webapp.py` |
+
+The web app runs on a CPU, and uses the GPU when there is one. Refine, the per-piece fine-tuning, is
+on by default and takes about 15–75 s per song.
 
 ---
 

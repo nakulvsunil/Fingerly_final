@@ -3,4 +3,6 @@ gymnasium>=0.29
 numpy>=1.24
 matplotlib>=3.7
 pytest>=7.0
+scipy>=1.10  # Wilcoxon tests in evaluate.py
+sb3-contrib>=2.0  # MaskablePPO baseline (train_ppo.py) only
 pygame>=2.5  # visualize.py only

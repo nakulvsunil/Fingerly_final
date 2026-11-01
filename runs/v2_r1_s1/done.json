@@ -1,0 +1,11 @@
+{
+ "step": 1000000,
+ "episodes": 10780,
+ "best_step": 675008,
+ "best": -11.331432405233143,
+ "seconds": 805.2278587818146,
+ "peak_ram_mb": 1842.609375,
+ "params": 91424,
+ "device": "cuda",
+ "seed": 1
+}

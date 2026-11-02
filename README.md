@@ -24,13 +24,13 @@ agreement, so do not commit it. Unzip it, for example to `data/PianoFingeringDat
 No dataset yet? `python -m fingerly.fake_pig --out data/fake_pig` writes a fake dataset in PIG
 format so you can test the pipeline. The numbers it produces are meaningless.
 
-## Quick start for collaborators (branch `two-hand-finetuned`)
+## Quick start for collaborators (branch `two-hand-new-final`)
 
 The trained Part C agents are in the repository (`runs/v2_*/best.pt`, about 6 MB), so nothing has to
 be trained to use them. The rest of `runs/` stays ignored.
 
 ```bash
-git clone -b two-hand-finetuned https://github.com/nakulvsunil/Fingerly.git && cd Fingerly
+git clone -b two-hand-new-final https://github.com/nakulvsunil/Fingerly.git && cd Fingerly
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt                         # for a GPU, install torch from pytorch.org first
 python webapp/server.py --open                          # web app at http://127.0.0.1:8000

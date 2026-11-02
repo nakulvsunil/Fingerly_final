@@ -239,3 +239,145 @@ per-piece fine-tuning for the first two rows.
 - **Absolute difficulty** values are on different scales and are left out.
 - **Web app budget:** the 63.9% uses 100 fine-tuning episodes. The web app now uses at least 25,
   which matched 100 on validation (65.6% vs 65.1%, `results/twohand_v2/episodes_val.json`).
+
+## 8. Robustness of the final agents (γ 0.5, λ 4)
+
+The robustness results in `results/twohand/robustness.json` and `tables.md` used the original
+γ = 0.99 agents. These are re-measured on the final v2 agents (3 seeds each, 30 test pieces, policy
+frozen): `results/twohand_final/robustness_final.json`, full table in
+`results/twohand_final/tables_final.md`. Degradation Δ = clean − perturbed, so a positive Δ Mgen is a
+loss and a negative Δ d_rel is a loss.
+
+| Perturbation | v2 R3 Δ Mgen | v2 R3 Δ d_rel | v2 R2 Δ Mgen | v2 R2 Δ d_rel | *S1 Δ Mgen* |
+| --- | --- | --- | --- | --- | --- |
+| Tempo × 0.75 / × 1.5 | −0.3 / −0.1 pts | −0.000 / −0.007 | +0.3 / +0.5 pts | −0.001 / −0.012 | *+0.3 / +0.0* |
+| Transpose ± 1 | +3.4 / +2.7 pts | −0.003 / −0.004 | +2.7 / +2.3 pts | −0.032 / −0.034 | *+3.6 / +3.5* |
+| Transpose ± 2 | +0.7 / +0.1 pts | −0.003 / +0.006 | +0.7 / +0.1 pts | −0.001 / +0.008 | *+2.1 / +1.4* |
+| Transpose ± 5 | −0.5 / −0.2 pts | +0.008 / +0.005 | +0.3 / +0.4 pts | +0.003 / −0.020 | *+0.5 / +0.6* |
+| Timing jitter 10 / 20 ms | +0.3 / +2.9 pts | −0.062 / −0.257 | +0.3 / +3.2 pts | −0.072 / −0.245 | *+1.5 / +3.7* |
+| Hand span × 0.85 / × 1.15 | +0.4 / +1.3 pts | −0.121 / −0.032 | −0.0 / +1.1 pts | −0.112 / −0.036 | *+1.3 / +1.8* |
+| Stress set (SR) | SR 0.20 (clean 0.02) | – | SR 0.18 | – | *SR 0.13* |
+
+- **Tempo and transposition by ± 2 or ± 5** barely matter (under 1 point). Transposing by one
+  semitone costs about 3 points of Mgen because the black/white key pattern changes; Mgen still uses
+  the original annotations, so part of this is the caveat in README §C.11.7, not a fault.
+- **Timing jitter of 20 ms** is the worst case: chord grouping breaks, d_rel worsens by about 0.25
+  and Mgen drops about 3 points. A smaller hand (span × 0.85) worsens d_rel by about 0.12.
+- The final RL agents degrade **no more than S1** under any perturbation, and R3 is the most stable
+  on d_rel under transposition.
+- By composer era (clean), v2 R3 is best on Romantic (66.2%) and Late Romantic (63.1%) pieces and
+  weakest on Baroque (54.6%, 3 pieces).
+
+## 9. Ablations of the final method (γ 0.5, λ 4)
+
+Each variant removes or replaces one component of v2 R3 and is trained exactly like it (γ 0.5, λ 4,
+1M steps, no early stopping), 2 seeds each (`python experiments/run_v2_ablsens.py`; runs `v2_abl_*`).
+Evaluated on the 30 test pieces: `results/twohand_final/ablations_final.json`. Wilcoxon signed-rank
+tests over the pieces against the full method: `ablations_wilcoxon.json`. Figure:
+`report/figures/fig_ablation.png`. The crossing term exists only when the agent picks the hand, so
+that variant is compared with v2 2c instead of R3. The first ablations (`runs/abl_*`, γ 0.99) are
+superseded.
+
+| Variant | Mgen | Δ Mgen (p) | d_rel ↓ | Δ d_rel (p) | Infeasible |
+| --- | --- | --- | --- | --- | --- |
+| **Full method (v2 R3, 3 seeds)** | **61.7% ± 0.3** | – | 1.166 | – | 0.19% |
+| − elite replay | 62.3% ± 0.4 | +0.5 (0.28) | 1.156 | −0.010 (0.06) | 0.20% |
+| − action masking (impossible-move penalty instead) | 62.1% ± 0.9 | +0.3 (0.60) | 1.129 | −0.036 (**0.02**, better) | **2.25%** (p < 0.001) |
+| − overlap tolerance | 61.5% ± 0.3 | −0.2 (0.44) | 1.153 | −0.012 (0.32) | **2.03%** (p = 0.004) |
+| − Double DQN and dueling | 61.4% ± 0.0 | −0.3 (0.82) | 1.181 | +0.015 (0.84) | 0.19% |
+| − hand-position features | 61.1% ± 0.1 | −0.6 (0.43) | 1.206 | +0.040 (**< 0.001**, worse) | 0.20% |
+| − n-step (n = 1) | 61.0% ± 0.1 | −0.7 (0.24) | 1.162 | −0.004 (0.54) | 0.17% |
+| − imitation bonus (λ = 0) | 60.6% ± 0.3 | −1.1 (0.12) | 1.174 | +0.008 (0.34) | 0.19% |
+| − time-leap term | 60.6% ± 0.1 | −1.1 (0.09) | 1.187 | +0.021 (0.27) | 0.20% |
+| − look-ahead (K = 0) | 57.8% ± 0.3 | **−3.9 (< 0.001)** | 1.279 | +0.114 (**< 0.001**, worse) | 0.25% |
+| Trained on `balliauw15` rules | 56.9% ± 0.7 | **−4.8 (< 0.001)** | 1.083 | −0.083 (**0.001**, better) | 0.19% |
+| − crossing term (2c; vs v2 2c 57.7%) | 52.5% ± 3.7 | **−5.2 (0.002)** | 1.246 | +0.025 (0.56) | 0.22% |
+| − full chords (`--chords reduce`) | 45.1%* | – | 1.245 | – | 0.15% |
+
+Mgen is mean ± std over seeds. Δ is variant minus full method, in Mgen points; p is the Wilcoxon p
+over the 30 pieces, in bold when p < 0.05. *With reduced chords, only one note of each chord is
+fingered, so Mgen counts single notes only. Compare it with the full method's single-note Mgen,
+53.2%, not with 61.7%.
+
+- **The look-ahead matters most** among the single components: without the next 4 events in the
+  state, Mgen drops 3.9 points and d_rel worsens by 0.11. Fingering is planning ahead.
+- **The crossing term is essential when the agent picks the hands** (2c): without it, Mgen falls
+  5.2 points and the seeds become unstable (± 3.7).
+- **The reward's rules matter.** Training on the 2025 paper's `balliauw15` rules gives fingerings
+  that score better under those same rules (d_rel −0.08) but agree less with pianists (−4.8
+  points). Our `parncutt12` rules are closer to how pianists play.
+- **Masking is about safety, not agreement.** Without masks, Mgen is unchanged and d_rel slightly
+  better, but 2.25% of moves are physically impossible, against 0.19%. The overlap tolerance does
+  the same for held notes (2.0% impossible moves without it).
+- **The hand-position features** do not change Mgen but keep the fingerings easier (d_rel +0.04
+  without them).
+- **Not significant with the v2 recipe:** elite replay, Double DQN with dueling, n-step returns, the
+  imitation bonus and the time-leap term (each within about 1 point, p > 0.05). Elite replay, which
+  defines R3, even comes out slightly ahead when removed (+0.5, not significant). This matches
+  the main results, where v2 R2 (62.2%) is level with v2 R3 (61.7%). With γ 0.5 the agent learns
+  well without it, so it should not be claimed as a source of the improvement. The imitation bonus
+  helps by about 1 point, consistent with R1 59.6% vs R2 62.2% in the 3-seed main results.
+
+## 10. Sensitivity of the final method
+
+One setting changed at a time from v2 R3; 1 seed, 500k steps, scored on the 14 validation segments
+(`runs/v2_sens_*`, `results/twohand_final/sensitivity_final.json`, figure
+`report/figures/fig_sensitivity.png`). The centre run (γ 0.5, λ 4, all other settings at their
+defaults, 500k steps) scores **61.2%** validation Mgen, gap 0.254. Training is deterministic for a
+fixed seed, so the four runs that repeat a default setting (elite 0.25, lr 3 × 10⁻⁴, tolerances
+0.03 / 0.05 s, v_max 95th percentile) give exactly the centre run's numbers.
+
+| Setting | Values → validation Mgen (gap to optimum) |
+| --- | --- |
+| γ | 0.3 → 62.4% (0.230) · **0.5 → 61.2% (0.254)** · 0.7 → 61.1% (0.250) · 0.9 → 60.9% (0.318) · 0.99 → **53.3% (0.532)** |
+| λ | 0 → 59.4% (0.237) · 1 → 61.8% (0.244) · 2 → 59.9% (0.253) · **4 → 61.2% (0.254)** · 8 → 63.9% (0.236) |
+| Elite share | 0.1 → 62.3% (0.213) · **0.25 → 61.2% (0.254)** · 0.5 → 61.5% (0.240) |
+| Learning rate | 1 × 10⁻⁴ → 59.8% (0.270) · **3 × 10⁻⁴ → 61.2% (0.254)** · 1 × 10⁻³ → 61.5% (0.251) |
+| chord_tol / overlap_tol | 0.02 / 0.03 s → 62.4% (0.246) · **0.03 / 0.05 → 61.2% (0.254)** · 0.05 / 0.08 → 61.8% (0.249) |
+| v_max percentile | 90 → 61.9% (0.232) · **95 → 61.2% (0.254)** · 99 → 61.6% (0.233) |
+
+- **γ is the only setting that matters a lot.** Everything from 0.3 to 0.9 lands within 1.5
+  points, but γ 0.99 collapses to 53.3% with twice the gap. This confirms the γ fix
+  (sections 2–3) under a different budget and a fresh seed. Most of a move's cost depends on the
+  last few events, so a short horizon is enough.
+- **Everything else is flat:** within about ±1.5 points of the centre, which is the single-seed
+  noise level (section 3 found λ 2 and λ 4 within noise). A slightly lower learning rate
+  (1 × 10⁻⁴) is the only other setting that is a little worse at this budget.
+- **λ 8** gives the highest validation Mgen (63.9%), but the λ curve is not monotonic
+  (1 → 61.8%, 2 → 59.9%), so on one seed this is within noise. Confirming it needs several seeds.
+  λ = 0 is the lowest, consistent with the ablation.
+- The method is therefore robust to its settings except the discount. The defaults are reasonable,
+  and none of the alternatives is clearly better on this evidence.
+
+## 11. RL benchmarks on the final setup
+
+The benchmark algorithms of README §C.9.5, retrained on exactly the v2 setup: γ 0.5, λ 4,
+1M steps, no early stopping, 3 seeds. Tabular Q-learning uses the rule reward only, with one Q-table
+per test piece (500 episodes each). Run with `python experiments/run_v2_bench.py --jobs 4`; results
+in `results/twohand_final/benchmarks_final.json`, figure `report/figures/fig_benchmarks.png`. The
+first benchmarks (`runs/dqn_*`, `ppo_*`, `qlearn`; γ 0.99, λ 0.5) are superseded.
+
+| Method | Test Mgen | d_rel ↓ | Gap to optimum ↓ | Train min / run | Params | Wilcoxon vs R3 (Mgen / d_rel) |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Ours: v2 R3** (masked Double DQN, dueling, 3-step, elite replay) | 61.7% ± 0.3 | 1.17 | 0.33 | 58 | 91k | – |
+| DQN (masked; no Double, no dueling, n = 1, no elite) | **62.3% ± 0.6** | **1.13** | **0.30** | 8 | 91k | p = 0.29 / **p < 0.001, better** |
+| MaskablePPO (sb3-contrib) | 59.9% ± 0.8 | 1.23 | 0.40 | 7 | 175k | **p = 0.016, worse** / **p = 0.003, worse** |
+| Tabular Q-learning (per test piece) | 48.7% | 1.80 | 0.99 | 3 (all pieces) | – | **p < 0.001, worse** / **p < 0.001, worse** |
+
+Mgen is mean ± std over seeds; d_rel and gap are pooled means. The Wilcoxon tests are over the 30
+test pieces (per-piece values averaged over seeds).
+
+- **Value-based deep RL suits this task.** Both DQN variants beat MaskablePPO (−1.8 points of Mgen
+  for PPO, significant) and are far ahead of tabular Q-learning. Q-learning cannot generalise
+  between states and, even trained on each test piece, ends about twice as far from the optimum.
+- **The plain DQN is as good as R3, and slightly easier to play** (d_rel 1.13 vs 1.17, significant),
+  while training about 7× faster. This agrees with the ablations (section 9): with the v2 recipe,
+  Double DQN, dueling, n-step returns and elite replay each make no significant difference. **The
+  gains come from the problem formulation, not from the DQN variant.** That formulation is:
+  - γ 0.5 (sections 2–3);
+  - finger-set actions with feasibility masks;
+  - the relative state with look-ahead (−3.9 points without it);
+  - the `parncutt12` rules (−4.8 points with `balliauw15`).
+- The reported model stays v2 R3. All fine-tuning, robustness and web app results use it, and
+  its Mgen is not significantly different from DQN's. DQN is the cheaper equivalent and the natural
+  base for future work.

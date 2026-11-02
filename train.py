@@ -170,7 +170,7 @@ def twohand_parser() -> argparse.ArgumentParser:
     a.add_argument("--steps", type=int, default=None, help="default 1M (2a/2b), 1.5M (2c)")
     a.add_argument("--envs", type=int, default=16)
     a.add_argument("--lr", type=float, default=3e-4)
-    a.add_argument("--gamma", type=float, default=0.99)
+    a.add_argument("--gamma", type=float, default=0.5, help="v2 value; the first Part C runs used 0.99")
     a.add_argument("--n-step", type=int, default=3)
     a.add_argument("--batch", type=int, default=256)
     a.add_argument("--buffer", type=int, default=500_000)
@@ -192,7 +192,8 @@ def twohand_parser() -> argparse.ArgumentParser:
     a.add_argument("--select", choices=["auto", "match", "difficulty"], default="auto",
                    help="auto: Mgen when lam > 0 (R2-R4), difficulty when lam = 0 (R1)")
     a.add_argument("--eval-every", type=int, default=25_000)
-    a.add_argument("--patience", type=int, default=50_000)
+    a.add_argument("--patience", type=int, default=100_000_000,
+                   help="early stopping; off by default (v2). The first Part C runs used 50,000")
     a.add_argument("--checkpoint-every", type=int, default=50_000)
     a.add_argument("--no-save-buffer", action="store_true")
     a.add_argument("--val-beam", type=int, default=1000, help="beam for the validation M0 in 2c")
@@ -243,7 +244,7 @@ def twohand_main(argv=None):
         from fingerly.qlearn import run_qlearning
 
         segs = ctx.segments(args.split)
-        run_qlearning(segs, {**ecfg.__dict__, "lam": 0.0}, out, args.episodes, args.seed)
+        run_qlearning(segs, {**ecfg.__dict__, "lam": 0.0}, out, args.episodes, args.seed, gamma=args.gamma)
         return
 
     tcfg = TrainConfig(algo=args.algo, steps=steps, n_envs=args.envs, lr=args.lr, gamma=args.gamma,

@@ -65,7 +65,7 @@ def main():
 # Part C: figures and tables of README §C.11.10
 # ======================================================================================
 TWOHAND_FLAGS = ("--curves", "--success", "--regret", "--seen-unseen", "--seeds", "--lambda-curve", "--tables",
-                 "--r4", "--sensitivity", "--excerpts")
+                 "--r4", "--r4-runs", "--sensitivity", "--excerpts")
 TWOHAND_PLOT_DOC = """Part C figures and tables (README §C.11.10).
 
     python plot.py --curves runs/ --threshold-gap 0.15 --out results/twohand/curves.png      # 1, 5
@@ -301,6 +301,44 @@ def plot_r4(main_json, out):
            title="R4: fine-tuning on each test piece")
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out, dpi=150)
+    print(f"wrote {out}")
+
+
+def plot_r4_runs(folders, m0_json, out):
+    """Figure 10 for the v2 fine-tuning (experiments/finetune_best.py), whose per-piece curves hold the
+    rule cost after each episode: gap to the optimum (cost - M0) / M0 against episodes."""
+    import glob
+
+    import numpy as np
+
+    m0 = json.loads(Path(m0_json).read_text())["pieces"]
+    fig, ax = plt.subplots(figsize=(8, 5))
+    dirs = [d for pattern in folders for d in sorted(glob.glob(pattern))]
+    for k, d in enumerate(dirs):
+        curves = []
+        for f in Path(d).glob("*.json"):
+            if f.name in ("config.json", "done.json"):
+                continue
+            js = json.loads(f.read_text())
+            c, ref = js.get("curve"), m0.get(js.get("piece", f.stem), {}).get("cost")
+            if c and ref and isinstance(c[0], (int, float)):
+                best = np.minimum.accumulate(np.array(c, float))  # the run keeps its best fingering so far
+                curves.append((best - ref) / ref)
+        if not curves:
+            continue
+        n = min(len(c) for c in curves)
+        mat = np.array([c[:n] for c in curves])
+        for c in mat:
+            ax.plot(range(n), c, lw=0.4, alpha=0.15, color=f"C{k}")
+        ax.plot(range(n), mat.mean(0), lw=2, color=f"C{k}", alpha=0.9,
+                label=f"{Path(d).name}: mean over {len(curves)} pieces ({mat.mean(0)[0]:.2f} -> {mat.mean(0)[-1]:.2f})")
+    ax.axvline(500, color="k", ls="--", label="2025 paper: 500 episodes per piece")
+    ax.set(xscale="symlog", xlabel="fine-tuning episodes on the test piece",
+           ylabel="gap to the optimum, best so far: (cost - M0) / M0", title="R4: fine-tuning on each test piece (v2)")
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=7)
     fig.tight_layout()
     fig.savefig(out, dpi=150)
     print(f"wrote {out}")
@@ -581,6 +619,8 @@ def twohand_plot_main(argv=None):
     ap.add_argument("--lambda-curve", help="main.json")
     ap.add_argument("--paper-points", default="data/twohand/eer2025_table5.json")
     ap.add_argument("--r4", help="main.json")
+    ap.add_argument("--r4-runs", nargs="+", help="v2 fine-tuning run folders (globs); needs --m0")
+    ap.add_argument("--m0", default="results/twohand/m0_given_test.json")
     ap.add_argument("--sensitivity", help="sensitivity.json")
     ap.add_argument("--tables", nargs="+", help="main.json [robustness.json]")
     ap.add_argument("--excerpts", nargs=2, metavar=("AGENT_CKPT", "COPY_CKPT"))
@@ -603,6 +643,8 @@ def twohand_plot_main(argv=None):
         plot_lambda_curve(args.lambda_curve, args.paper_points, args.out)
     if args.r4:
         plot_r4(args.r4, args.out)
+    if args.r4_runs:
+        plot_r4_runs(args.r4_runs, args.m0, args.out)
     if args.sensitivity:
         plot_sensitivity(args.sensitivity, args.out)
     if args.tables:

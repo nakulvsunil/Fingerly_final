@@ -4,7 +4,7 @@ Per piece, 500 episodes; an episode is one pass through all of the piece's segme
 reward only (no imitation bonus). Discrete state, per hand: the last two keys relative to the
 current event (clipped to +-12 semitones), the last two finger sets; plus the current event's
 size, colour and given hand. A dictionary holds the Q-table; masks are applied. alpha 0.1,
-gamma 0.99, epsilon linear from 1.0 to 0.05 over the episodes. The final greedy fingering of each
+gamma 0.99 by default (train.py passes --gamma), epsilon linear from 1.0 to 0.05 over the episodes. The final greedy fingering of each
 segment is saved for evaluation.
 """
 
@@ -78,7 +78,8 @@ def train_piece(pool: SegmentPool, episodes: int = 500, seed: int = 0, alpha: fl
     return dict(curve=curve, greedy_return=greedy_ret, states=len(Q), segments=fings)
 
 
-def run_qlearning(segments: Sequence, env_cfg: dict, out: str | Path, episodes: int = 500, seed: int = 0):
+def run_qlearning(segments: Sequence, env_cfg: dict, out: str | Path, episodes: int = 500, seed: int = 0,
+                  gamma: float = 0.99):
     """One Q-table per piece; results in <out>/<piece>.json (resumable: done pieces are skipped)."""
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -86,14 +87,14 @@ def run_qlearning(segments: Sequence, env_cfg: dict, out: str | Path, episodes: 
     by: Dict[str, List] = defaultdict(list)
     for s in segments:
         by[s.piece].append(s)
-    (out / "config.json").write_text(json.dumps(dict(env=env_cfg, episodes=episodes, seed=seed), indent=1, default=str))
+    (out / "config.json").write_text(json.dumps(dict(env=env_cfg, episodes=episodes, seed=seed, gamma=gamma), indent=1, default=str))
     for piece, segs in sorted(by.items()):
         f = out / f"{piece}.json"
         if f.exists():
             continue
         t0 = time.time()
         pool = SegmentPool(segs, cfg, bonus=False)
-        res = train_piece(pool, episodes, seed)
+        res = train_piece(pool, episodes, seed, gamma=gamma)
         res["seconds"] = time.time() - t0
         f.write_text(json.dumps(res))
         print(f"q-learning {piece}: greedy return {res['greedy_return']:.1f}, {res['states']} states, "

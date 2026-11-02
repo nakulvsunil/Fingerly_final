@@ -1,0 +1,461 @@
+FINGERLY - A GUIDE TO THE CODE OF THE LATEST PROJECT (PART C, v2)
+=================================================================
+
+This guide explains the code of the latest version of the project: Part C, both hands with chords,
+trained with the "v2" recipe. It walks through the files in the order they are used, explaining what
+each one does, its important classes and functions, and how the pieces connect. Part A and Part B
+(older versions) are listed briefly at the end.
+
+A shorter table version is in CODE_MAP.md. Results are in experiments/RESULTS.md.
+
+
+-----------------------------------------------------------------
+1. WHAT THE PROJECT DOES, IN ONE PARAGRAPH
+-----------------------------------------------------------------
+
+Given a piano score, Fingerly decides which finger (1 = thumb ... 5 = little finger) plays every
+note, for both hands, including chords. It does this with deep reinforcement learning (RL).
+
+- The score is the environment.
+- At each step the agent picks the fingers for the next note or chord.
+- The reward is minus how hard that move is for a hand (12 "difficulty rules", plus a penalty for
+  moving the hand too fast and for the hands crossing).
+- An optional bonus is given for matching what real pianists wrote.
+
+The agent is a masked Double DQN. It is trained on the PIG dataset (pieces with pianists'
+fingerings) and tested on 30 pieces it has never seen. The best result is 63.9% agreement with the
+pianists (Mgen).
+
+
+-----------------------------------------------------------------
+2. WORDS YOU NEED BEFORE READING THE CODE
+-----------------------------------------------------------------
+
+PIG
+    The Piano Fingering dataset (Nakamura et al., 2020). Each file is one piece, with one line per
+    note: onset, offset, pitch, hand (channel) and the pianist's finger. Some pieces have several
+    pianists ("annotators").
+
+Event
+    What the agent fingers in one step: either a single note or a chord (several notes struck
+    together by one hand).
+
+Segment
+    A piece is cut into segments of at most 256 events, at long rests. One RL episode is one
+    segment.
+
+Finger set
+    The action. For an event of C notes the agent picks C different fingers. Counting every set of
+    1 to 5 fingers gives 5 + 10 + 10 + 5 + 1 = 31 sets per hand. The fingers are given to the chord's
+    notes in pitch order.
+
+Modes
+    2a  --mode lh       left hand alone.
+    2b  --mode given    both hands; the score says which hand plays each note. 31 actions.
+                        This is the main mode.
+    2c  --mode assign   both hands; for single notes the agent also picks the hand. 62 actions.
+
+Mask
+    A list saying which actions are legal right now, for example "no 3-finger set for a 2-note
+    chord" or "this stretch is impossible". Illegal actions are never chosen.
+
+Reward
+    reward = -(difficulty rules + time-leap + crossing) + lambda * (1 if the agent matches a pianist)
+    - "parncutt12" is our set of 12 difficulty rules.
+    - "balliauw15" is the 2025 paper's rules, used only for comparison.
+    - lambda is the imitation-bonus weight. It is 4 in the final setup.
+
+M0
+    The exact lowest-cost fingering under our reward, found by dynamic programming (search, not
+    RL). It is a measuring stick only, used for "gap", "regret" and "success". The agent never sees
+    it during training.
+
+Mgen
+    The main score: the share of notes where the agent's finger equals the pianist's finger,
+    averaged over the pianists. Mhigh, Msoft and Mrec are variants.
+
+d_rel
+    Difficulty of our fingering divided by the difficulty of the pianists' fingering, scored under
+    the 2025 paper's rules.
+
+Methods
+    R1      RL with the rule reward only (lambda = 0).
+    R2      R1 plus the imitation bonus (lambda = 4).
+    R3      R2 plus "elite replay": the best episode found so far for each segment is replayed
+            often. This is the main method; the web app uses it.
+    A2      R3 plus pianists' demonstrations mixed into the replay buffer.
+    2c      R3 in mode assign (the agent also picks hands).
+    R4      R3 fine-tuned on each test piece with the rule reward only. With best-of-3 seeds this
+            gives the 63.9% result.
+    S1      Supervised "copy the pianists" network. A measuring stick, not RL.
+    S2      Hidden Markov model (HMM). A measuring stick, not RL.
+
+v2 recipe
+    The final training settings:
+    - gamma (discount) = 0.5 instead of 0.99;
+    - lambda = 4;
+    - the full 1M steps with no early stopping.
+    The first Part C runs used gamma 0.99 and underfit badly (about 50% Mgen against 62% for v2).
+    The full story is in experiments/RESULTS.md, sections 1-3.
+
+
+-----------------------------------------------------------------
+3. SUGGESTED READING ORDER
+-----------------------------------------------------------------
+
+ 1. fingerly/pig.py                 how a PIG file is read (only the Note class and load_pig)
+ 2. fingerly/twohand/prepare.py     notes -> events -> segments -> train/val/test
+ 3. fingerly/twohand/actions.py     the 31 finger-set actions
+ 4. fingerly/twohand/rules.py       the difficulty rules (the reward's main part)
+ 5. fingerly/twohand/costs.py       why the reward is fast: precomputed tables
+ 6. fingerly/twohand/features.py    the 67 numbers the agent sees
+ 7. fingerly/twohand/env.py         THE ENVIRONMENT: reset, mask, step, obs
+ 8. fingerly/dqn.py (Part C half)   THE AGENT AND TRAINING LOOP: Agent, Replay, NStep, Trainer
+ 9. train.py (twohand_main)         how a training run is put together
+10. fingerly/twohand/search.py      M0, the optimum (measuring stick)
+11. experiments/finetune_best.py    per-piece fine-tuning (the 63.9%)
+12. fingerly/metrics.py, evaluate.py   how results are measured
+13. webapp/agent_runner.py          how the app uses the trained agent
+
+Reading 1-9 is enough to understand how the agent learns.
+
+
+-----------------------------------------------------------------
+4. THE CORE: fingerly/twohand/  (environment, reward, data)
+-----------------------------------------------------------------
+
+fingerly/twohand/prepare.py  -  DATA PIPELINE
+    Purpose: turn raw PIG notes into the segments the agent plays.
+    Steps:
+      a) In each hand, a note that overlaps the previous one by at most overlap_tol (0.05 s) is
+         treated as legato and made sequential. A longer overlap becomes a HELD note, whose finger
+         stays busy.
+      b) Notes struck within chord_tol (0.03 s) by the same hand become one chord Event.
+      c) Both hands' events are merged in onset order (merge_streams).
+      d) The merged stream is cut into Segments (segment_stream).
+      e) The pianists' fingerings are attached to each event as labels (attach_labels). They are
+         used for the imitation bonus and for Mgen.
+      f) Pieces are split into train / validation / test (make_twohand_split). The 30 test pieces
+         are the same as the 2025 paper's.
+    Key items:
+      PrepConfig    the settings (chord_tol, overlap_tol, chords full/reduce).
+      Event         one note or chord: pitches, hand, onset, offset, held notes, labels.
+      Segment       a list of Events from one piece.
+      Context       loads everything once: the split, v_max (the 95th-percentile hand speed of the
+                    pianists, used by the time-leap rule) and segments(name).
+
+fingerly/twohand/actions.py  -  FINGER-SET ACTIONS
+    One global table of the 31 finger sets.
+      fingers_of(set, hand)   set index -> finger tuple, for example (1, 3, 5).
+      set_of(fingers)         the reverse.
+      sizes_mask(size)        which sets have the right number of fingers for an event.
+    In mode assign: action = hand * 31 + set.
+
+fingerly/twohand/rules.py  -  THE REWARD RULES
+    All rules are written for the right hand. The left hand is handled by mirroring the keyboard
+    (negating key positions), so the same code serves both hands.
+    Key items:
+      CostModel                 base class.
+                                event_rules(ev2, ev1, ev0) scores an event given the two before it
+                                (some rules look 2 events back). transition_ok / chord_reach_ok
+                                decide what is physically possible; they feed the masks.
+      Parncutt12                our 12 rules, extended to chords (training reward).
+      Balliauw15                the 2025 paper's rules (comparison only).
+      time_leap(shift, dt, v_max)   penalty when the hand moves faster than a pianist would.
+      crossing(thumb_l, thumb_r)    penalty when the hands cross.
+      make_model(name, ...)     builds a CostModel by name.
+
+fingerly/twohand/costs.py  -  SPEED: PRECOMPUTED TABLES
+    The cost of an event depends only on the finger sets at the hand's last three events. So for
+    every event the code builds a small table, cost[set two back, set one back, set now], once per
+    segment. During training, env.step() just looks the number up. This is why training runs at
+    about 500-1,500 steps per second on a laptop GPU.
+      build_segment_tables(seg, model, v_max)   builds the tables for one segment.
+      lookup(table, s2, s1, s0)                 reads one cost.
+
+fingerly/twohand/features.py  -  THE STATE
+    The numbers the agent sees, all RELATIVE (intervals, not absolute pitches), so it can
+    generalise to unseen pieces:
+      - the current event: register, black key, chord size, span, time gap, overlap;
+      - a 4-event look-ahead;
+      - each hand's recent keys and fingers, and hand position.
+    obs_dim(lookahead, hand_pos) gives the size: 67 in the final setup.
+
+fingerly/twohand/env.py  -  THE ENVIRONMENT  (most important file to understand)
+    EnvConfig     everything about the environment: mode, lambda, weights, mask on/off,
+                  look-ahead, ...
+    SegInfo       one segment, prepared for fast play: its cost tables, masks and pianist matches.
+    HandState     what one hand is doing: last finger sets, thumb position, held fingers,
+                  last onset.
+    Episode       one play-through of one segment. Read these methods:
+        reset(info)       start the segment; returns (obs, mask).
+        mask()            which actions are legal for the current event.
+        step(action)      the heart of the RL loop:
+                          1. split the action into (hand, finger set);
+                          2. look up the rule cost, plus the time-leap term, in the tables;
+                          3. update the hand's state;
+                          4. add the crossing penalty;
+                          5. add lambda * (1 if the set matches a pianist);
+                          6. reward = -(rules + extra) + lambda * bonus;
+                          7. record the step (StepRecord) and return (reward, done).
+        obs()             builds the state vector for the next event.
+        fingering()       the finished fingering.
+    SegmentPool   a set of SegInfos plus the reward model. Its "bonus" flag decides whether the
+                  imitation bonus is on: it is on for training and off for validation and test.
+    VecEnv        16 Episodes run side by side, so the agent acts on a batch (faster on the GPU).
+    TwoHandEnv    a Gymnasium wrapper, used only for the PPO benchmark.
+
+fingerly/twohand/search.py  -  M0, THE OPTIMUM (MEASURING STICK)
+    dp_hand / dp_segment   exact dynamic programming over (set one back, set now) for each hand,
+                           using the same cost tables. Exact for mode given.
+    beam_search            for mode assign (hand choice) and for the crossing term.
+    m0_costs(pool)         the M0 cost of every segment in a pool. Used to report "gap to the
+                           optimum" during validation.
+
+fingerly/twohand/robust.py  -  ROBUSTNESS TESTS
+    Changes the test pieces (tempo x0.75 / x1.5, transposition, timing jitter, smaller or larger
+    hands, the composer-era grouping, a synthetic stress set) and rebuilds the segments. The
+    trained policy is evaluated on them unchanged.
+
+
+-----------------------------------------------------------------
+5. THE AGENT AND TRAINING: fingerly/dqn.py
+-----------------------------------------------------------------
+
+The first half of the file (DQNConfig, QNetwork, ReplayBuffer, DQNAgent, train_dqn) is Part B's
+one-hand agent. The Part C agent starts at "class TrainConfig":
+
+    TrainConfig    all training settings: steps, gamma, n-step, lr, batch, buffer, tau, epsilon
+                   schedule, hidden sizes, double / dueling, elite share, demos, patience,
+                   checkpoints.
+    Agent          the neural network and how it learns.
+        q_values(obs)            Q-value of every action.
+        act(obs, masks, eps)     epsilon-greedy, but only over LEGAL actions (masked).
+        greedy()                 the policy used for evaluation (eps = 0).
+        update(...)              one gradient step:
+                                 - Double DQN target: the online net picks the best legal next
+                                   action and the target net values it;
+                                 - n-step return; Huber loss; Adam; soft target update (tau).
+        save / load / load_weights    checkpoints (best.pt). load_weights(trunk_only=True) lets 2c
+                                      start from an R3 checkpoint.
+    Replay         the replay buffer (observations, actions, n-step rewards, next masks).
+    NStep          turns single steps into 3-step transitions. The discount used is gamma**3.
+    Trainer        the training loop. train() does:
+                     loop until `steps`:
+                       1. all 16 environments act (VecEnv), epsilon decaying linearly;
+                       2. transitions go into the replay buffer;
+                       3. when a segment ends, its episode is kept in the ELITE memory if it is
+                          the best return seen for that segment (this is R3's elite replay);
+                       4. every 4 environment steps, one update on a batch of 256. With elite
+                          replay on, 25% of the batch comes from elite episodes;
+                       5. every 25k steps, validation (Mgen, gap to M0, ...). The best one is
+                          saved as best.pt;
+                       6. early stopping when patience runs out. The final setup turns this off
+                          (patience = 100,000,000).
+                   It writes train_log.csv, eval_log.csv, best.pt, last.pt, done.json and can
+                   resume from ckpt.pt.
+    build_demos         A2: pianists' fingerings turned into transitions (demonstrations).
+    episode_transitions plays a fixed fingering through a segment and returns its transitions.
+    bench               speed test.
+
+
+-----------------------------------------------------------------
+6. RUNNING THINGS: top-level scripts
+-----------------------------------------------------------------
+
+train.py
+    "python train.py --mode given ..." calls twohand_main(). Without --mode it runs Part B.
+    twohand_main():
+      1. Context(...) loads the data;
+      2. env_config(...) builds the environment settings;
+      3. TrainConfig(...) builds the training settings;
+      4. SegmentPool(train, bonus=True) and SegmentPool(val, bonus=False);
+      5. m0_costs(val) is computed, so validation can report the gap;
+      6. optional: curriculum (2c), A3 seeding, A2 demos, --init from a checkpoint;
+      7. Trainer(...).train().
+    Defaults are now the v2 recipe (gamma 0.5, no early stopping).
+    --algo dqn gives the plain DQN benchmark; --algo qlearn gives tabular Q-learning.
+    Example (final R3):
+      python train.py --pig-dir data/PianoFingeringDataset_v1.2 --mode given --cost parncutt12 \
+          --lam 4 --elite 1 --seed 0 --out runs/v2_r3_s0
+
+experiments/run_v2.py
+    Trains every final agent (R1, R2, R3, A2, then 2c from R3) for seeds 0-2, 4 jobs at a time.
+    Skips runs that already have done.json.
+      python experiments/run_v2.py --recipe "--gamma 0.5" --lam 4 --jobs 4
+
+experiments/train_variant.py
+    Runs train.py with one extra option, --reward-scale. run_v2.py launches its jobs through it.
+
+experiments/finetune_best.py  -  PER-PIECE FINE-TUNING (R4, the 63.9%)
+    finetune_best(ckpt, pool, episodes, ...):
+      - load a trained R3;
+      - for each test piece, keep training on that piece only:
+        rule reward only, no pianist labels, lr 1e-4, eps 0.1;
+      - after every episode, play greedily and keep the LOWEST-COST fingering seen.
+    Run on seeds 0-2 and keep the best per piece: "best of 3" = 63.9% Mgen.
+    The web app's Refine button runs this same function.
+
+finetune.py
+    The original R4: the same idea, but it keeps the last fingering instead of the best.
+
+train_bc.py
+    S1: the same network trained by supervised learning (cross-entropy) to copy the pianists.
+    A baseline only.
+
+train_ppo.py
+    The MaskablePPO benchmark (sb3-contrib), on TwoHandEnv.
+
+search.py
+    Runs M0 on a split and writes results/twohand/m0_given_test.json. The evaluations use this
+    file as their reference.
+
+evaluate.py
+    "python evaluate.py --mode given ..." scores checkpoints (--ckpt), saved fingerings
+    (--fingerings) and baselines on validation or test. It reports Mgen and the other match rates,
+    d_rel, gap, regret and success, and optionally:
+      --seen-unseen   generalisation
+      --wilcoxon      significance tests
+      --bootstrap     confidence intervals
+      --compute       training time, RAM, inference time
+      --robustness    the perturbed test sets
+    Results are cached per checkpoint in cache/twohand/eval.
+
+fingerly/metrics.py
+    The maths behind evaluate.py:
+      rollout          plays a policy greedily over a pool.
+      method_metrics   Mgen / Mhigh / Msoft / Mrec, d_rel, success, regret, ...
+      rates            the match rates themselves.
+      HumanRef         the pianists' reference values.
+      Statistics: bootstrap_ci, wilson, stratified_bootstrap_iqm, seed_stability, wilcoxon_pairs.
+
+fingerly/baselines.py
+    HMMSets is S2 (an HMM over finger sets). Greedy is the one-step greedy baseline.
+
+plot.py
+    Figures and tables from evaluate.py's JSON. Examples:
+      --curves runs/ --include v2_r3      learning curves
+      --seeds main.json                   seed box plots
+      --r4-runs "runs/v2_r4best_s?"       fine-tuning curve
+      --tables main.json robustness.json  markdown tables
+
+check_reward.py
+    Sanity checks of the reward, with no training: it reproduces the 2025 paper's Table A1, checks
+    that left/right mirroring is consistent, that chord masks reject few pianist chords, and that
+    v_max is sensible.
+
+prepare_twohand.py
+    Writes the data coverage report.
+
+visualize.py
+    Plays a fingering on the pygame piano:
+      python visualize.py --mode given --ckpt runs/v2_r3_s0/best.pt \
+          --input <PIG file> [--json out.json]
+
+experiments/run_v2_ablsens.py
+    Ablations (one component removed from v2 R3, 2 seeds) and the sensitivity study (one setting
+    changed, 500k steps), then evaluation into results/twohand_final/.
+
+experiments/run_v2_bench.py
+    DQN, PPO and Q-learning benchmarks on the v2 setup (results: RESULTS.md section 11).
+
+experiments/plot_ablsens.py
+    Makes the report figures for the ablations, sensitivity and benchmarks (report/figures/).
+
+experiments/check_fit.py, rule_audit.py, fit_rule_weights.py, ensemble.py
+    Diagnosis tools and experiments that were tried and rejected (see RESULTS.md):
+      check_fit         did the agent underfit?
+      rule_audit        which rules disagree with pianists?
+      fit_rule_weights  reweighting the rules (not adopted)
+      ensemble          averaging seeds (not better)
+
+run_twohand.py
+    The ORIGINAL Part C experiment grid (gamma 0.99). Kept for the record; superseded by
+    experiments/.
+
+
+-----------------------------------------------------------------
+7. THE WEB APP: webapp/
+-----------------------------------------------------------------
+
+server.py        A small web server (standard library only). It serves the page and handles
+                 uploads, then returns JSON with notes, fingers and costs (score_json).
+                 Start it with: python webapp/server.py --open
+score_io.py      Reads an upload (MusicXML / .mxl, MIDI or PIG) into a Score of notes with hands
+                 (upper staff = right hand).
+agent_runner.py  Fingerer.finger(score, refine) runs the score through the same pipeline as
+                 training (events, segments), then the greedy policy of runs/v2_r3_s0 fingers
+                 every segment.
+                 With refine=True it runs finetune_best on the piece for each of the three seeds
+                 in parallel (at least 25 episodes, at most 90 s) and keeps the cheapest result.
+static/          index.html, app.js, style.css: upload, score drawing, the piano animation.
+examples/        Ode to Joy and Twinkle Twinkle as MusicXML.
+beginner_data.py Beginner tunes. Its held-out tunes are still used by experiments/check_fit.py.
+train_beginner.py, check_beginner.py
+                 An old experiment (beginner model). Not used by the app.
+test_webapp.py   Tests for the readers and the endpoint.
+
+
+-----------------------------------------------------------------
+8. HOW ONE TRAINING STEP FLOWS THROUGH THE FILES
+-----------------------------------------------------------------
+
+  Trainer.train()                                   (fingerly/dqn.py)
+    -> Agent.act(obs, mask, eps)       chooses a legal finger set for each of 16 envs
+    -> VecEnv.step(actions)                         (fingerly/twohand/env.py)
+         -> Episode.step(action)
+              -> cost table lookup                  (fingerly/twohand/costs.py, built from rules.py)
+              -> time-leap, crossing                (fingerly/twohand/rules.py)
+              -> imitation bonus (lambda * match)   (labels from prepare.py)
+              -> reward, done
+         -> Episode.obs(), Episode.mask()           (features.py, actions.py)
+    -> NStep.push -> Replay.add        3-step transitions into the buffer
+    -> elite memory updated if the episode is the best for its segment
+    -> Agent.update(batch)             Double DQN, Huber loss, Adam, soft target update
+    -> every 25k steps: validation -> best.pt
+
+
+-----------------------------------------------------------------
+9. WHERE THINGS ARE SAVED
+-----------------------------------------------------------------
+
+runs/<name>_s<seed>/       config.json (all settings), train_log.csv, eval_log.csv, best.pt (the
+                           model used everywhere), last.pt, done.json.
+runs/v2_*                  The final agents. These are the only runs in git.
+results/twohand_v2/        Final main results (main_v2.json), fine-tuning (finetune_test.json),
+                           diagnosis tables.
+results/twohand_final/     Robustness, ablations, sensitivity, plots, tables and fingerings of
+                           the final agents.
+results/twohand/           The first (gamma 0.99) run. Its m0_*.json, coverage and reward checks
+                           are still valid.
+report/figures/            Figures for the report.
+
+
+-----------------------------------------------------------------
+10. OLDER PARTS (for reference)
+-----------------------------------------------------------------
+
+Part A - reproduction of Iman & Ahn (2024), right hand, four pieces:
+    reproduce.py, fingerly/paper/
+      agents.py   DQN, DDQN, PG, A2C
+      env.py      one-hot state
+      rules.py    12 rules
+      dp.py       exact optimum
+      pieces.py   the four pieces
+
+Part B - one hand at a time, monophonic passages:
+    train.py / evaluate.py / plot.py without --mode, and these modules:
+      fingerly/env.py, fingerly/cost.py, fingerly/pig.py (passages), fingerly/data.py,
+      fingerly/export.py, predict.py, run_seeds.sh, and the first half of fingerly/dqn.py.
+
+Shared helpers:
+    fingerly/synth.py      synthetic scales and arpeggios (curriculum for 2c).
+    fingerly/fake_pig.py   a fake dataset for tests.
+    visual/piano/          the pygame piano used by visualize.py.
+
+Tests:
+    tests/test_twohand.py   Part C
+    tests/test_dqn.py       the agent
+    tests/test_fingerly.py  Part B
+    tests/test_paper.py     Part A
+    Run them with: pytest -q

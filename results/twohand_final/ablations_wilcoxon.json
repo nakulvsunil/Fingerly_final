@@ -1,0 +1,218 @@
+{
+ "v2_abl_balliauw": {
+  "ref": "v2_r3",
+  "Mgen": [
+   -0.0484,
+   0.0,
+   30
+  ],
+  "d_rel_balliauw15": [
+   -0.1234,
+   0.0012,
+   30
+  ],
+  "infeasible_rate": [
+   -0.0,
+   0.9165,
+   30
+  ]
+ },
+ "v2_abl_nobonus": {
+  "ref": "v2_r3",
+  "Mgen": [
+   -0.0111,
+   0.1221,
+   30
+  ],
+  "d_rel_balliauw15": [
+   0.0328,
+   0.3387,
+   30
+  ],
+  "infeasible_rate": [
+   0.0001,
+   0.4652,
+   30
+  ]
+ },
+ "v2_abl_nocross": {
+  "ref": "v2_2c",
+  "Mgen": [
+   -0.0522,
+   0.0024,
+   30
+  ],
+  "d_rel_balliauw15": [
+   0.0378,
+   0.5561,
+   30
+  ],
+  "infeasible_rate": [
+   -0.0001,
+   0.7532,
+   30
+  ]
+ },
+ "v2_abl_nodouble": {
+  "ref": "v2_r3",
+  "Mgen": [
+   -0.0029,
+   0.8236,
+   30
+  ],
+  "d_rel_balliauw15": [
+   0.0182,
+   0.8394,
+   30
+  ],
+  "infeasible_rate": [
+   0.0001,
+   0.715,
+   30
+  ]
+ },
+ "v2_abl_noelite": {
+  "ref": "v2_r3",
+  "Mgen": [
+   0.0054,
+   0.2801,
+   30
+  ],
+  "d_rel_balliauw15": [
+   -0.0034,
+   0.0606,
+   30
+  ],
+  "infeasible_rate": [
+   0.0,
+   0.715,
+   30
+  ]
+ },
+ "v2_abl_nohandpos": {
+  "ref": "v2_r3",
+  "Mgen": [
+   -0.0059,
+   0.4255,
+   30
+  ],
+  "d_rel_balliauw15": [
+   0.1046,
+   0.0002,
+   30
+  ],
+  "infeasible_rate": [
+   -0.0001,
+   1.0,
+   30
+  ]
+ },
+ "v2_abl_nolook": {
+  "ref": "v2_r3",
+  "Mgen": [
+   -0.0387,
+   0.0,
+   30
+  ],
+  "d_rel_balliauw15": [
+   0.2866,
+   0.0,
+   30
+  ],
+  "infeasible_rate": [
+   0.0001,
+   0.5002,
+   30
+  ]
+ },
+ "v2_abl_nomask": {
+  "ref": "v2_r3",
+  "Mgen": [
+   0.0035,
+   0.5978,
+   30
+  ],
+  "d_rel_balliauw15": [
+   -0.0681,
+   0.0221,
+   30
+  ],
+  "infeasible_rate": [
+   0.0228,
+   0.0,
+   30
+  ]
+ },
+ "v2_abl_nooverlap": {
+  "ref": "v2_r3",
+  "Mgen": [
+   -0.0025,
+   0.44,
+   30
+  ],
+  "d_rel_balliauw15": [
+   -0.0223,
+   0.3184,
+   30
+  ],
+  "infeasible_rate": [
+   0.0072,
+   0.0044,
+   30
+  ]
+ },
+ "v2_abl_notime": {
+  "ref": "v2_r3",
+  "Mgen": [
+   -0.0112,
+   0.0919,
+   30
+  ],
+  "d_rel_balliauw15": [
+   0.0531,
+   0.271,
+   30
+  ],
+  "infeasible_rate": [
+   -0.0001,
+   1.0,
+   30
+  ]
+ },
+ "v2_abl_nstep1": {
+  "ref": "v2_r3",
+  "Mgen": [
+   -0.0074,
+   0.2449,
+   30
+  ],
+  "d_rel_balliauw15": [
+   -0.0036,
+   0.5425,
+   30
+  ],
+  "infeasible_rate": [
+   -0.0004,
+   0.2733,
+   30
+  ]
+ },
+ "v2_abl_reduce": {
+  "ref": "v2_r3",
+  "Mgen": [
+   -0.1666,
+   0.0,
+   30
+  ],
+  "d_rel_balliauw15": [
+   -0.1453,
+   0.0523,
+   30
+  ],
+  "infeasible_rate": [
+   -0.0002,
+   0.7794,
+   30
+  ]
+ }
+}

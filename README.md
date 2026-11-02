@@ -40,7 +40,7 @@ python webapp/server.py --open                          # web app at http://127.
 | --- | --- |
 | Web app: upload MusicXML, MIDI or PIG and see the agent's fingering on a piano | `webapp/README.md` |
 | Results and what was tried (v2 recipe, fine-tuning, comparison with the 2025 paper) | `experiments/RESULTS.md` |
-| Result tables (JSON and markdown) | `results/twohand_v2/` |
+| Result tables (JSON and markdown) | `results/twohand_v2/`; final-agent figures, robustness, ablations and sensitivity in `results/twohand_final/` |
 | Included models: R1, R2, R3, A2 and 2c, seeds 0–2 | `runs/v2_<method>_s<seed>/best.pt` |
 | Retrain the v2 models (about 1–1.5 h on a laptop GPU) | `python experiments/run_v2.py --recipe "--gamma 0.5" --lam 4 --jobs 4` |
 | Fine-tune on the test pieces (the 63.9% result) | `python experiments/finetune_best.py --ckpt runs/v2_r3_s0/best.pt --split test --episodes 100 --out runs/v2_r4best_s0` (seeds 0–2) |
@@ -350,7 +350,7 @@ python evaluate.py    --pig-dir data/PianoFingeringDataset_v1.2 --split test --m
 | Action | A **finger set** for the current event (§C.5): 31 masked actions per hand; 62 when the agent also chooses the hand |
 | Transition | Deterministic: move to the next event of the score; the hand's state is updated with the chosen fingers |
 | Reward | −(difficulty rules + time-leap + crossing) + λ · (match with a pianist) (§C.6) |
-| Objective | Maximise the discounted return over the segment, γ = 0.99 |
+| Objective | Maximise the discounted return over the segment, γ = 0.5 (v2; the first runs used 0.99, see `experiments/RESULTS.md` §2–3) |
 | Learner | Masked Double DQN with a dueling head and 3-step returns (§C.9) |
 
 ### C.3.2 What is RL and what is not
@@ -683,6 +683,9 @@ synthetic data → PIG segments.
 
 ### C.9.3 Optional accelerators (off by default)
 
+A2 was retrained for v2. A1 and A3 were run only with the first recipe (γ 0.99) and are not part of the
+final results.
+
 | | Flag | What it does |
 | --- | --- | --- |
 | A1 | `--bc-init runs/s1_s0/best.pt` | Start RL from S1's weights |
@@ -691,12 +694,16 @@ synthetic data → PIG segments.
 
 ### C.9.4 Hyperparameters (starting values)
 
+The final agents (v2) change three of these: **γ 0.5** instead of 0.99, **λ 4**, and **no early
+stopping** (the full step budget). `train.py` now defaults to γ 0.5 and no early stopping; why is in
+`experiments/RESULTS.md` §2–3.
+
 | Setting | Value |
 | --- | --- |
 | Network | Dueling MLP, 256-256, ReLU |
 | Optimiser | Adam, lr 3 × 10⁻⁴ |
 | Loss | Huber on the n-step Double DQN target |
-| γ / n-step | 0.99 / 3 |
+| γ / n-step | 0.5 / 3 (v2; first runs 0.99 / 3) |
 | Replay buffer | 500,000 transitions |
 | Batch / update frequency | 256 / every 4 environment steps |
 | Target network | Soft update, τ = 0.005 |
@@ -705,18 +712,21 @@ synthetic data → PIG segments.
 | Steps | 1M (2a, 2b), 1.5M (2c) |
 | Seeds | 3 (final numbers: 3 per configuration) |
 | Model selection | Best validation Mgen (R2–R4); best validation difficulty (R1) |
-| Early stopping | Patience 50,000 steps on the selection metric |
+| Early stopping | None in v2 (full budget); first runs: patience 50,000 steps on the selection metric |
 | R4 fine-tuning | lr 1 × 10⁻⁴, ε 0.1, 20–50 episodes per test piece |
 
 ### C.9.5 RL benchmark algorithms
+
+Retrained on the v2 setup with `python experiments/run_v2_bench.py --jobs 4`; results in
+`experiments/RESULTS.md` §11 and `report/figures/fig_benchmarks.png`.
 
 Compared in §C.11.5. Starting settings:
 
 | Algorithm | Settings |
 | --- | --- |
 | DQN (`--algo dqn`) | As §C.9.4, but no double, no dueling, n = 1 |
-| MaskablePPO (`train_ppo.py`) | sb3-contrib; same features and masks; 16 environments, rollout 2,048 steps per environment, 10 epochs, batch 256, lr 3 × 10⁻⁴, clip 0.2, entropy 0.01, γ 0.99, GAE λ 0.95, 1M steps |
-| Tabular Q-learning (`--algo qlearn`) | Per test piece, 500 episodes; α = 0.1, γ = 0.99, ε linear from 1.0 to 0.05; dictionary-backed Q-table; masks applied |
+| MaskablePPO (`train_ppo.py`) | sb3-contrib; same features and masks; 16 environments, rollout 2,048 steps per environment, 10 epochs, batch 256, lr 3 × 10⁻⁴, clip 0.2, entropy 0.01, γ 0.5 (v2; first runs 0.99), GAE λ 0.95, 1M steps, λ 4 |
+| Tabular Q-learning (`--algo qlearn`) | Per test piece, 500 episodes; α = 0.1, γ = 0.5 (v2; first runs 0.99), ε linear from 1.0 to 0.05; dictionary-backed Q-table; masks applied |
 
 ---
 
@@ -836,7 +846,7 @@ Q-learning, DQN, Double DQN and PPO.
 
 ### C.11.6 Ablation study
 
-The **full method** is R3 at the best λ: masks, time-leap term, crossing term (2c), 4-event
+The **full method** is v2 R3 (γ 0.5, λ 4, no early stopping): masks, time-leap term, crossing term (2c), 4-event
 look-ahead, 3-step returns, Double + dueling, full chords and overlap tolerance. Each variant
 **removes or replaces one component** and is trained with 2 seeds:
 
@@ -856,6 +866,10 @@ look-ahead, 3-step returns, Double + dueling, full chords and overlap tolerance.
 | − overlap tolerance | `--overlap-tol 0` | How much data and accuracy it brings |
 | Cost model swapped | Train on `balliauw15` instead of `parncutt12` | Which rules give more human-like fingering |
 
+Run: `python experiments/run_v2_ablsens.py --jobs 4` (runs `v2_abl_*`, results in
+`results/twohand_final/ablations_final.json`; write-up in `experiments/RESULTS.md` §9, figure
+`report/figures/fig_ablation.png`). The first ablations (`runs/abl_*`) used γ 0.99.
+
 Report every variant on the same metrics as the full method. Mark which changes are significant
 (§C.11.8). The method-level comparisons (S1 vs R2, R1 vs R2, A1–A3 on and off, 2b vs 2c) are part of
 the same table.
@@ -863,7 +877,8 @@ the same table.
 ### C.11.7 Robustness and sensitivity
 
 **Robustness:** does the trained policy still work when the input changes? Each test is evaluation
-only, with the policy frozen:
+only, with the policy frozen. Results for the v2 agents: `results/twohand_final/robustness_final.json`
+and `experiments/RESULTS.md` §8. The tests:
 
 | Perturbation | Levels | What it stresses |
 | --- | --- | --- |
@@ -879,14 +894,17 @@ infeasible-move rate. Under transposition and hand size, Mgen still uses the ori
 although a pianist might finger the changed passage differently; state this caveat.
 
 **Sensitivity:** how much do the results depend on the settings? Retrain with 1 seed, 500k steps,
-and evaluate on validation:
+and evaluate on validation. Each setting is changed alone from v2 R3 (γ 0.5, λ 4), which is also
+trained at 500k as the centre point (`v2_sens_base`). Run with `experiments/run_v2_ablsens.py`;
+results in `results/twohand_final/sensitivity_final.json`, write-up in `experiments/RESULTS.md` §10, figure
+`report/figures/fig_sensitivity.png`. The first study (`runs/sens_*`) used γ 0.99:
 
 | Setting | Values |
 | --- | --- |
-| λ | 0, 0.25, 0.5, 1, 2 (from R2) |
+| λ | 0, 1, 2, 4, 8 (R3) |
 | Elite share of the batch | 0.1, 0.25, 0.5 |
 | Learning rate | 1 × 10⁻⁴, 3 × 10⁻⁴, 1 × 10⁻³ |
-| γ | 0.9, 0.99 |
+| γ | 0.3, 0.5, 0.7, 0.9, 0.99 |
 | `chord_tol` / `overlap_tol` | 0.02 / 0.03, 0.03 / 0.05, 0.05 / 0.08 s |
 | v_max percentile | 90, 95, 99 |
 
@@ -982,12 +1000,13 @@ python search.py   --pig-dir data/PianoFingeringDataset_v1.2 --split test --mode
 python search.py   --pig-dir data/PianoFingeringDataset_v1.2 --split test --mode assign --beam 10000 --out results/twohand/m0_assign.json
 python train_bc.py --pig-dir data/PianoFingeringDataset_v1.2 --mode given --seed 0 --out runs/s1_s0
 
-# 3. RL main line (repeat with --seed 1 and 2)
-python train.py --pig-dir data/PianoFingeringDataset_v1.2 --mode given --cost parncutt12 --lam 0   --seed 0 --out runs/r1_s0
-python train.py --pig-dir data/PianoFingeringDataset_v1.2 --mode given --cost parncutt12 --lam 0.5 --seed 0 --out runs/r2_lam0.5_s0
-python train.py --pig-dir data/PianoFingeringDataset_v1.2 --mode given --cost parncutt12 --lam 0.5 --elite 1 --seed 0 --out runs/r3_lam0.5_s0
-python finetune.py --ckpt runs/r3_lam0.5_s0/best.pt --pig-dir data/PianoFingeringDataset_v1.2 --split test --episodes 50 --out runs/r4
-python train.py --pig-dir data/PianoFingeringDataset_v1.2 --mode assign --cost parncutt12 --lam 0.5 --elite 1 --init runs/r3_lam0.5_s0/best.pt --curriculum --seed 0 --out runs/2c_s0
+# 3. RL main line (repeat with --seed 1 and 2). train.py defaults to the v2 recipe (γ 0.5, no early stopping);
+#    experiments/run_v2.py trains all v2 methods. The first runs used --gamma 0.99 --patience 50000 and λ 0.5 / 2.
+python train.py --pig-dir data/PianoFingeringDataset_v1.2 --mode given --cost parncutt12 --lam 0   --seed 0 --out runs/v2_r1_s0
+python train.py --pig-dir data/PianoFingeringDataset_v1.2 --mode given --cost parncutt12 --lam 4 --seed 0 --out runs/v2_r2_s0
+python train.py --pig-dir data/PianoFingeringDataset_v1.2 --mode given --cost parncutt12 --lam 4 --elite 1 --seed 0 --out runs/v2_r3_s0
+python experiments/finetune_best.py --ckpt runs/v2_r3_s0/best.pt --split test --episodes 100 --out runs/v2_r4best_s0
+python train.py --pig-dir data/PianoFingeringDataset_v1.2 --mode assign --cost parncutt12 --lam 4 --elite 1 --init runs/v2_r3_s0/best.pt --curriculum --seed 0 --out runs/v2_2c_s0
 
 # 4. Optional accelerators
 python train.py ... --bc-init runs/s1_s0/best.pt     # A1
@@ -999,9 +1018,9 @@ python train.py     --pig-dir data/PianoFingeringDataset_v1.2 --mode given --alg
 python train_ppo.py --pig-dir data/PianoFingeringDataset_v1.2 --mode given --seed 0 --out runs/ppo_s0
 python train.py     --pig-dir data/PianoFingeringDataset_v1.2 --mode given --algo qlearn --split test --episodes 500 --out runs/qlearn
 
-# 6. Ablations and sensitivity (§C.11.6–C.11.7): one flag changed from the full method, e.g.
-python train.py ... --lam 0.5 --elite 1 --no-mask --seed 0 --out runs/abl_nomask_s0
-python train.py ... --lam 0.5 --elite 1 --lookahead 0 --seed 0 --out runs/abl_nolook_s0
+# 6. Ablations and sensitivity (§C.11.6–C.11.7): one flag changed from v2 R3; all of them, then evaluation:
+python experiments/run_v2_ablsens.py --jobs 4
+python train.py ... --lam 4 --elite 1 --no-mask --seed 0 --out runs/v2_abl_nomask_s0     # one variant by hand
 
 # 7. Evaluation: all metrics, statistics, robustness
 python evaluate.py --pig-dir data/PianoFingeringDataset_v1.2 --split test --mode given \
@@ -1011,15 +1030,17 @@ python evaluate.py --pig-dir data/PianoFingeringDataset_v1.2 --split test --mode
 python evaluate.py ... --robustness tempo=0.75,1.5 transpose=-5,-2,-1,1,2,5 jitter=0.01,0.02 span=0.85,1.15 era stress \
     --out results/twohand/robustness.json
 
-# 8. Figures and tables (§C.11.10)
-python plot.py --curves runs/ --threshold-gap 0.15 --out results/twohand/curves.png
-python plot.py --success runs/ --out results/twohand/success.png
-python plot.py --regret results/twohand/main.json --out results/twohand/regret.png
-python plot.py --seen-unseen results/twohand/main.json --out results/twohand/generalisation.png
-python plot.py --seeds results/twohand/main.json --out results/twohand/seeds.png
-python plot.py --lambda-curve results/twohand/main.json --paper-points data/twohand/eer2025_table5.json --out results/twohand/curve.png
-python plot.py --tables results/twohand/main.json results/twohand/robustness.json --out results/twohand/tables.md
-python visualize.py --mode assign --ckpt runs/2c_s0/best.pt --input data/PianoFingeringDataset_v1.2/FingeringFiles/107-1_fingering.txt
+# 8. Figures and tables (§C.11.10), from the v2 results (results/twohand_final/main_final.json = main_v2.json
+#    without the γ 0.99 agents, plus the v2 fine-tuning). The results/twohand/ figures are from the first runs.
+python plot.py --curves runs/ --threshold-gap 0.15 --include v2_r1 v2_r2 v2_r3 v2_a2 v2_2c --out results/twohand_final/curves.png
+python plot.py --success runs/ --include v2_r1 v2_r2 v2_r3 v2_a2 v2_2c --out results/twohand_final/success.png
+python plot.py --regret results/twohand_final/main_final.json --out results/twohand_final/regret.png
+python plot.py --seen-unseen results/twohand_final/main_final.json --out results/twohand_final/generalisation.png
+python plot.py --seeds results/twohand_final/main_final.json --out results/twohand_final/seeds.png
+python plot.py --r4-runs "runs/v2_r4best_s?" --out results/twohand_final/r4.png
+python plot.py --tables results/twohand_final/main_final.json results/twohand_final/robustness_final.json --out results/twohand_final/tables_final.md
+python plot.py --excerpts runs/v2_r3_s0/best.pt runs/s1_s0/best.pt --out results/twohand_final/excerpts.md
+python visualize.py --mode given --ckpt runs/v2_r3_s0/best.pt --input data/PianoFingeringDataset_v1.2/FingeringFiles/107-1_fingering.txt     --json results/twohand_final/fingerings/107_v2_r3_s0.json
 ```
 
 Common flags: `--mode lh|given|assign`, `--chords full|reduce`, `--cost parncutt12|balliauw15`,
